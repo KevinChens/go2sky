@@ -255,7 +255,7 @@ func (r *gRPCReporter) initCDS(cdsWatchers []go2sky.AgentConfigChangeWatcher) {
 	r.cdsService.BindWatchers(cdsWatchers)
 
 	// fetch config
-	go func() {
+	/*go func() {
 		for {
 			if r.conn.GetState() == connectivity.Shutdown {
 				break
@@ -279,7 +279,17 @@ func (r *gRPCReporter) initCDS(cdsWatchers []go2sky.AgentConfigChangeWatcher) {
 
 			time.Sleep(r.cdsInterval)
 		}
-	}()
+	}()*/
+	// new a runner
+	runner := New()
+	// add task to runner
+	runner.Add(Task{Name: FetchConfiguration(), Param: r})
+	// start a runner
+	runner.Start()
+	// stop a runner
+	if err := runner.Stop(); err != nil {
+		r.logger.Errorf("stop runner error %v", err)
+	}
 }
 
 func (r *gRPCReporter) closeStream(stream agentv3.TraceSegmentReportService_CollectClient) {
