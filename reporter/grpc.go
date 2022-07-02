@@ -27,7 +27,6 @@ import (
 	"github.com/SkyAPM/go2sky/internal/tool"
 	"github.com/SkyAPM/go2sky/logger"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	configuration "skywalking.apache.org/repo/goapi/collect/agent/configuration/v3"
@@ -219,10 +218,8 @@ func (r *gRPCReporter) closeGRPCConn() {
 }
 
 func (r *gRPCReporter) initSendPipeline() {
-	if r.traceClient == nil {
-		return
-	}
-	go func() {
+
+	/*go func() {
 	StreamLoop:
 		for {
 			stream, err := r.traceClient.Collect(metadata.NewOutgoingContext(context.Background(), r.md))
@@ -243,22 +240,29 @@ func (r *gRPCReporter) initSendPipeline() {
 			r.closeGRPCConn()
 			break
 		}
-	}()
+	}()*/
+	ptk := &pplTasks{
+		traceClient: r.traceClient,
+		sendCh:      r.sendCh,
+	}
+	// send pipeline
+	runner := New()
+	runner.Add(ptk)
+	runner.Start()
+	runner.Stop()
 }
 
 func (r *gRPCReporter) initCDS(cdsWatchers []go2sky.AgentConfigChangeWatcher) {
-	if r.cdsClient == nil {
-		return
+	ctk := &cdsTask{
+		conn:        r.conn,
+		cdsClient:   r.cdsClient,
+		cdsWatchers: cdsWatchers,
 	}
-
-	// bind watchers
-	r.cdsService.BindWatchers(cdsWatchers)
-
 	// fetch config
 	// new a runner
 	runner := New()
 	// add task to runner
-	runner.Add(r)
+	runner.Add(ctk)
 	// start a runner
 	runner.Start()
 	// stop a runner
@@ -292,10 +296,8 @@ func (r *gRPCReporter) reportInstanceProperties() (err error) {
 }
 
 func (r *gRPCReporter) check() {
-	if r.checkInterval < 0 || r.conn == nil || r.managementClient == nil {
-		return
-	}
-	go func() {
+
+	/*go func() {
 		instancePropertiesSubmitted := false
 		for {
 			if r.conn.GetState() == connectivity.Shutdown {
@@ -328,7 +330,18 @@ func (r *gRPCReporter) check() {
 			}
 			time.Sleep(r.checkInterval)
 		}
-	}()
+	}()*/
+
+	ctk := &checkTasks{
+		conn:             r.conn,
+		checkInterval:    r.checkInterval,
+		managementClient: r.managementClient,
+	}
+	runner := New()
+	runner.Add(ctk)
+	runner.Start()
+	runner.Stop()
+
 }
 
 func buildOSInfo() (props []*commonv3.KeyStringValuePair) {
