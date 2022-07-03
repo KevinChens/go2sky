@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"context"
+	"github.com/SkyAPM/go2sky/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
@@ -10,21 +11,21 @@ import (
 )
 
 type checkTasks struct {
+	service          string
+	serviceInstance  string
 	conn             *grpc.ClientConn
 	checkInterval    time.Duration
 	managementClient managementv3.ManagementServiceClient
+	logger           logger.Log
+	// Instance belong layer name which define in the backend
+	layer                   string
+	processStatusHookEnable bool
 }
 
 // Run check
 func (ctk *checkTasks) Run(ctx context.Context) {
 
-	r := &gRPCReporter{
-		conn:             ctk.conn,
-		checkInterval:    ctk.checkInterval,
-		managementClient: ctk.managementClient,
-	}
-
-	if r.checkInterval < 0 || r.conn == nil || r.managementClient == nil {
+	if ctk.checkInterval < 0 || ctk.conn == nil || ctk.managementClient == nil {
 		return
 	}
 
@@ -35,35 +36,37 @@ func (ctk *checkTasks) Run(ctx context.Context) {
 		default:
 			instancePropertiesSubmitted := false
 			for {
-				if r.conn.GetState() == connectivity.Shutdown {
+				if ctk.conn.GetState() == connectivity.Shutdown {
 					break
 				}
 
 				// report the process status
-				if r.processStatusHookEnable {
+				if ctk.processStatusHookEnable {
+					// TODO: reportProcess()是谁的方法
 					reportProcess(r)
 				}
 
 				if !instancePropertiesSubmitted {
+					// TODO: reportInstanceProperties是谁的方法
 					err := r.reportInstanceProperties()
 					if err != nil {
-						r.logger.Errorf("report serviceInstance properties error %v", err)
-						time.Sleep(r.checkInterval)
+						ctk.logger.Errorf("report serviceInstance properties error %v", err)
+						time.Sleep(ctk.checkInterval)
 						continue
 					}
 					instancePropertiesSubmitted = true
 				}
 
-				_, err := r.managementClient.KeepAlive(metadata.NewOutgoingContext(context.Background(), r.md), &managementv3.InstancePingPkg{
-					Service:         r.service,
-					ServiceInstance: r.serviceInstance,
-					Layer:           r.layer,
+				_, err := ctk.managementClient.KeepAlive(metadata.NewOutgoingContext(context.Background(), r.md), &managementv3.InstancePingPkg{
+					Service:         ctk.service,
+					ServiceInstance: ctk.serviceInstance,
+					Layer:           ctk.layer,
 				})
 
 				if err != nil {
-					r.logger.Errorf("send keep alive signal error %v", err)
+					ctk.logger.Errorf("send keep alive signal error %v", err)
 				}
-				time.Sleep(r.checkInterval)
+				time.Sleep(ctk.checkInterval)
 			}
 		}
 	}

@@ -15,11 +15,6 @@ type Runner struct {
 	cancel context.CancelFunc // notify runner to stop task
 }
 
-// New a runner
-func New() *Runner {
-	return &Runner{}
-}
-
 // Add task to runner
 func (r *Runner) Add(tasks ...Task) {
 	r.tasks = append(r.tasks, tasks...)

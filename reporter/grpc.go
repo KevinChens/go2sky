@@ -90,6 +90,8 @@ func NewGRPCReporter(serverAddr string, opts ...GRPCReporterOption) (go2sky.Repo
 		r.cdsClient = configuration.NewConfigurationDiscoveryServiceClient(r.conn)
 		r.cdsService = go2sky.NewConfigDiscoveryService()
 	}
+	// TODO: tasks的参数在这里进行传递吗？但有些参数是后边才会给
+
 	return r, nil
 }
 
@@ -119,6 +121,7 @@ type gRPCReporter struct {
 	// The process metadata and is enabled the process status hook
 	processLabels           []string
 	processStatusHookEnable bool
+	runner                  Runner
 }
 
 func (r *gRPCReporter) Boot(service string, serviceInstance string, cdsWatchers []go2sky.AgentConfigChangeWatcher) {
@@ -244,29 +247,31 @@ func (r *gRPCReporter) initSendPipeline() {
 	ptk := &pplTasks{
 		traceClient: r.traceClient,
 		sendCh:      r.sendCh,
+		logger:      r.logger,
 	}
 	// send pipeline
-	runner := New()
-	runner.Add(ptk)
-	runner.Start()
-	runner.Stop()
+	r.runner.Add(ptk)
+	r.runner.Start()
+	r.runner.Stop()
 }
 
 func (r *gRPCReporter) initCDS(cdsWatchers []go2sky.AgentConfigChangeWatcher) {
 	ctk := &cdsTask{
+		service:     r.service,
 		conn:        r.conn,
 		cdsClient:   r.cdsClient,
+		cdsService:  r.cdsService,
 		cdsWatchers: cdsWatchers,
+		cdsInterval: r.cdsInterval,
+		logger:      r.logger,
 	}
 	// fetch config
-	// new a runner
-	runner := New()
 	// add task to runner
-	runner.Add(ctk)
+	r.runner.Add(ctk)
 	// start a runner
-	runner.Start()
+	r.runner.Start()
 	// stop a runner
-	runner.Stop()
+	r.runner.Stop()
 }
 
 func (r *gRPCReporter) closeStream(stream agentv3.TraceSegmentReportService_CollectClient) {
@@ -333,14 +338,18 @@ func (r *gRPCReporter) check() {
 	}()*/
 
 	ctk := &checkTasks{
-		conn:             r.conn,
-		checkInterval:    r.checkInterval,
-		managementClient: r.managementClient,
+		service:                 r.service,
+		serviceInstance:         r.serviceInstance,
+		conn:                    r.conn,
+		checkInterval:           r.checkInterval,
+		managementClient:        r.managementClient,
+		logger:                  r.logger,
+		layer:                   r.layer,
+		processStatusHookEnable: r.processStatusHookEnable,
 	}
-	runner := New()
-	runner.Add(ctk)
-	runner.Start()
-	runner.Stop()
+	r.runner.Add(ctk)
+	r.runner.Start()
+	r.runner.Stop()
 
 }
 

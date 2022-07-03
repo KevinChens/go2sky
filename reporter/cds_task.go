@@ -3,6 +3,7 @@ package reporter
 import (
 	"context"
 	"github.com/SkyAPM/go2sky"
+	"github.com/SkyAPM/go2sky/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	configuration "skywalking.apache.org/repo/goapi/collect/agent/configuration/v3"
@@ -10,26 +11,24 @@ import (
 )
 
 type cdsTask struct {
+	service     string
 	conn        *grpc.ClientConn
 	cdsClient   configuration.ConfigurationDiscoveryServiceClient
+	cdsService  *go2sky.ConfigDiscoveryService
 	cdsWatchers []go2sky.AgentConfigChangeWatcher
+	cdsInterval time.Duration
+	logger      logger.Log
 }
 
 // Run fetch config
 // need parameter: r.conn, r.cdsClient, ctk.cdsWatchers
 func (ctk *cdsTask) Run(ctx context.Context) {
-
-	r := &gRPCReporter{
-		conn:      ctk.conn,
-		cdsClient: ctk.cdsClient,
-	}
-
-	if r.cdsClient == nil {
+	if ctk.cdsClient == nil {
 		return
 	}
 
 	// bind watchers
-	r.cdsService.BindWatchers(ctk.cdsWatchers)
+	ctk.cdsService.BindWatchers(ctk.cdsWatchers)
 
 	for {
 		select {
@@ -37,27 +36,27 @@ func (ctk *cdsTask) Run(ctx context.Context) {
 			return
 		default:
 			for {
-				if r.conn.GetState() == connectivity.Shutdown {
+				if ctk.conn.GetState() == connectivity.Shutdown {
 					break
 				}
 
-				configurations, err := r.cdsClient.FetchConfigurations(context.Background(), &configuration.ConfigurationSyncRequest{
-					Service: r.service,
-					Uuid:    r.cdsService.UUID,
+				configurations, err := ctk.cdsClient.FetchConfigurations(context.Background(), &configuration.ConfigurationSyncRequest{
+					Service: ctk.service,
+					Uuid:    ctk.cdsService.UUID,
 				})
 
 				if err != nil {
-					r.logger.Errorf("fetch dynamic configuration error %v", err)
-					time.Sleep(r.cdsInterval)
+					ctk.logger.Errorf("fetch dynamic configuration error %v", err)
+					time.Sleep(ctk.cdsInterval)
 					continue
 				}
 
 				if len(configurations.GetCommands()) > 0 && configurations.GetCommands()[0].Command == "ConfigurationDiscoveryCommand" {
 					command := configurations.GetCommands()[0]
-					r.cdsService.HandleCommand(command)
+					ctk.cdsService.HandleCommand(command)
 				}
 
-				time.Sleep(r.cdsInterval)
+				time.Sleep(ctk.cdsInterval)
 			}
 		}
 	}
